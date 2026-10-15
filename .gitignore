@@ -1,0 +1,15 @@
+# 本地配置（含你的 IP、用户名，绝对不要提交）
+config.env
+scripts/config.env
+
+# 生成的产物
+*.bin
+*.log
+
+# macOS
+.DS_Store
+
+# 编辑器
+*.swp
+.idea/
+.vscode/

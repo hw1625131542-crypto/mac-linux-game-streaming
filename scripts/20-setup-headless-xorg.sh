@@ -1,0 +1,187 @@
+#!/usr/bin/env bash
+# ============================================================================
+#  ② 装 headless Xorg（整套方案的核心）
+#
+#  为什么不用 Xvfb：
+#    Xvfb 没有任何 GPU 加速接口。NVIDIA 显卡渲染完每一帧，都得用 CPU 把整张
+#    画面拷回 Xvfb 的缓冲区，实测这条通路只有 ~65 MPix/s —— 2560x1664 下
+#    死锁 15fps（连 glxgears 这种极简程序也只有 15fps，说明跟游戏无关）。
+#    详见 docs/performance.md
+#
+#  这个脚本做的事：
+#    1. 生成 Xorg 配置（跑在 NVIDIA 显卡上，headless 虚拟输出 + 自定义 EDID）
+#    2. 建一个 systemd 服务常驻跑它（Restart=always，开机自启）
+#    3. 配一条 sudoers 规则，让你不用密码就能重启这个服务
+#
+#  用法：sudo bash scripts/20-setup-headless-xorg.sh
+#  前置：先跑过 scripts/make-edid.py 生成 EDID
+# ============================================================================
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/lib.sh"
+load_config
+require_root
+
+# 以「登录用户」的身份执行，而不是 root
+TARGET_USER="${SUDO_USER:-$(logname 2>/dev/null || echo "$SERVER_USER")}"
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+[ -n "$TARGET_HOME" ] || die "找不到用户 $TARGET_USER 的家目录"
+
+SERVICE_NAME="gamestream-xorg"
+ENV_FILE="$TARGET_HOME/gamestream-xorg.env"
+XORG_LOG="/var/log/${SERVICE_NAME}.log"
+
+info "配置摘要"
+echo "    运行身份    : $TARGET_USER ($TARGET_HOME)"
+echo "    X display   : $DISPLAY_NUM"
+echo "    分辨率      : ${STREAM_WIDTH}x${STREAM_HEIGHT} @ ${STREAM_REFRESH}Hz, ${STREAM_DPI} DPI"
+echo "    EDID        : $EDID_PATH"
+echo "    Xorg 配置   : $XORG_CONF_PATH"
+echo "    输出连接器  : ${XORG_OUTPUT:-DFP-0}"
+echo
+
+# ---------------------------------------------------------------- 1. Xorg 配置
+info "1/5 生成 Xorg 配置：$XORG_CONF_PATH"
+[ -f "$EDID_PATH" ] || die "找不到 EDID 文件 $EDID_PATH，先跑：python3 scripts/make-edid.py --from-config scripts/config.env"
+[ "$(stat -c%s "$EDID_PATH")" = "128" ] || warn "EDID 不是 128 字节，可能有问题"
+
+# NVIDIA 驱动模块不一定在默认路径，两个都写进去
+cat > "$XORG_CONF_PATH" <<EOF
+# 由 20-setup-headless-xorg.sh 生成 —— 要改分辨率/DPI 请改 config.env 后重跑
+Section "Files"
+    ModulePath "/usr/lib/x86_64-linux-gnu/nvidia/xorg"
+    ModulePath "/usr/lib/xorg/modules"
+EndSection
+
+Section "ServerLayout"
+    Identifier  "headless"
+    Screen      0 "screen" 0 0
+EndSection
+
+Section "Device"
+    Identifier  "gpu"
+    Driver      "nvidia"
+    Option      "AllowEmptyInitialConfiguration" "true"
+    # 骗驱动「接了一台显示器」，否则它不会建输出
+    Option      "ConnectedMonitor" "${XORG_OUTPUT:-DFP-0}"
+    # ★ 关键：没有 EDID 时，X 的帧缓冲读不回来（抓屏全黑）
+    Option      "CustomEDID"       "${XORG_OUTPUT:-DFP-0}:$EDID_PATH"
+    # 放宽时序校验，否则驱动会以「EDID 里没有这个模式」为由拒绝自定义分辨率
+    Option      "ModeValidation"   "AllowNonEdidModes, NoEdidModes, NoMaxPClkCheck, NoVertRefreshCheck, NoHorizSyncCheck, NoDFPNativeResolutionCheck, NoVirtualSizeCheck, AllowInterlacedModes"
+EndSection
+
+Section "Monitor"
+    Identifier  "virtmon"
+    Option      "DPMS" "false"
+EndSection
+
+Section "Screen"
+    Identifier  "screen"
+    Device      "gpu"
+    Monitor     "virtmon"
+    DefaultDepth 24
+    Option      "AllowEmptyInitialConfiguration" "true"
+    SubSection "Display"
+        Depth   24
+        Virtual ${STREAM_WIDTH} ${STREAM_HEIGHT}
+    EndSubSection
+EndSection
+EOF
+chown "$TARGET_USER:$TARGET_USER" "$XORG_CONF_PATH"
+ok "已写入"
+
+# ---------------------------------------------------------------- 2. 显示器编号
+info "2/5 写显示器编号文件：$ENV_FILE"
+if [ ! -f "$ENV_FILE" ]; then
+    printf 'GS_DISPLAY=%s\n' "$DISPLAY_NUM" > "$ENV_FILE"
+fi
+chown "$TARGET_USER:$TARGET_USER" "$ENV_FILE"
+ok "GS_DISPLAY=$(grep -oP 'GS_DISPLAY=\K.*' "$ENV_FILE" || echo "$DISPLAY_NUM")"
+
+# ---------------------------------------------------------------- 3. systemd 服务
+info "3/5 建 systemd 服务：${SERVICE_NAME}.service"
+cat > "/etc/systemd/system/${SERVICE_NAME}.service" <<EOF
+[Unit]
+Description=Headless Xorg for game streaming (GPU-accelerated virtual display)
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+EnvironmentFile=-$ENV_FILE
+# -ac            关掉访问控制（同机的普通用户/Sunshine 要能连上）
+# -noreset       客户端全退出后不重置
+# -nolisten tcp  只允许本地连接
+ExecStart=/usr/lib/xorg/Xorg \${GS_DISPLAY} -config $XORG_CONF_PATH -logfile $XORG_LOG -noreset -nolisten tcp -ac
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+ok "服务文件已写入"
+
+# ---------------------------------------------------------------- 4. sudoers
+info "4/5 配免密 sudo（只放开这一个服务，不放开别的）"
+SUDOERS_FILE="/etc/sudoers.d/gamestream"
+cat > "$SUDOERS_FILE" <<EOF
+# 允许 $TARGET_USER 免密启停 gamestream-* 服务（方便脚本自动恢复）
+$TARGET_USER ALL=(root) NOPASSWD: /usr/bin/systemctl start gamestream-*, /usr/bin/systemctl stop gamestream-*, /usr/bin/systemctl restart gamestream-*, /usr/bin/systemctl is-active gamestream-*, /usr/bin/systemctl status gamestream-*
+EOF
+chmod 440 "$SUDOERS_FILE"
+visudo -c >/dev/null || { rm -f "$SUDOERS_FILE"; die "sudoers 校验失败，已回滚"; }
+ok "已写入 $SUDOERS_FILE"
+
+# ---------------------------------------------------------------- 5. 启动 + 自检
+info "5/5 启动服务并自检"
+systemctl daemon-reload
+systemctl enable "$SERVICE_NAME" >/dev/null 2>&1 || true
+systemctl restart "$SERVICE_NAME" || true
+sleep 6
+
+DISP="$(grep -oP 'GS_DISPLAY=\K.*' "$ENV_FILE" 2>/dev/null || echo "$DISPLAY_NUM")"
+STATUS="$(systemctl is-active "$SERVICE_NAME" || true)"
+echo "    服务状态: $STATUS"
+
+if ! x_display_ready "$DISP"; then
+    err "X display $DISP 没起来。看日志："
+    echo "      tail -40 $XORG_LOG"
+    echo "    常见原因："
+    echo "      · BusID / 输出连接器名字不对 → 改 config.env 里的 XORG_OUTPUT，重跑本脚本"
+    echo "      · 显卡驱动没装好（nvidia-smi 能不能用？）"
+    echo "      · 显卡正被别的 X server 占用"
+    exit 1
+fi
+ok "X display $DISP 已就绪"
+
+echo "--- xrandr ---"
+DISPLAY="$DISP" xrandr 2>&1 | head -4 | sed 's/^/    /'
+
+echo "--- OpenGL 渲染器（应该是你的显卡，而不是 llvmpipe）---"
+DISPLAY="$DISP" glxinfo 2>/dev/null | grep -E "OpenGL renderer|OpenGL vendor" | sed 's/^/    /' \
+    || warn "glxinfo 不可用（装 mesa-utils）"
+
+echo "--- 帧缓冲可读性测试（能抓到红色就说明 EDID 生效了）---"
+DISPLAY="$DISP" xsetroot -solid red 2>/dev/null || true
+sleep 1
+TMP="$(mktemp --suffix=.png)"
+if DISPLAY="$DISP" import -window root "$TMP" 2>/dev/null; then
+    PIXEL="$(convert "$TMP" -format '%[pixel:p{10,10}]' info: 2>/dev/null || echo '?')"
+    if echo "$PIXEL" | grep -qiE "red|255,0,0"; then
+        ok "抓屏正常（$PIXEL）"
+    else
+        err "抓到的是 $PIXEL 而不是红色 —— 多半是 EDID 没生效"
+        err "检查 $XORG_CONF_PATH 里的 CustomEDID 路径，以及 $XORG_LOG 里的 EDID 相关行"
+    fi
+else
+    warn "import 抓屏失败（装 imagemagick）"
+fi
+rm -f "$TMP"
+DISPLAY="$DISP" xsetroot -solid black 2>/dev/null || true
+
+cat <<DONE
+
+────────────────────────────────────────────────────────────────
+完成。下一步：
+  bash scripts/30-fix-input-permissions.sh
+────────────────────────────────────────────────────────────────
+DONE
