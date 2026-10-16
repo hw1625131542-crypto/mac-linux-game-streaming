@@ -1,4 +1,5 @@
 # Troubleshooting quick reference
+
 > 🌐 [中文](zh-CN/troubleshooting.md) ｜ **English**
 
 Look up what you're seeing. Every entry comes with a command to tell you what's actually wrong.
@@ -22,7 +23,7 @@ Look up what you're seeing. Every entry comes with a command to tell you what's 
 |---|---|
 | **All black, but the X server is healthy** | EDID isn't taking effect. See [headless-xorg.md](headless-xorg.md). Verify: `DISPLAY=:200 xsetroot -solid red; import -window root /tmp/a.png; convert /tmp/a.png -format '%[pixel:p{10,10}]' info:` should print red |
 | **Frame rate locked at 15fps** | The virtual display fell back to Xvfb. `pgrep -af "Xorg :200"` should show `/usr/lib/xorg/Xorg`; see [performance.md](performance.md) |
-| **Frame rate locked at exactly 30fps** | The game is in exclusive fullscreen. See [game-tuning.md](game-tuning.md#1-frame-rate-locked-at-exactly-30fps). Telltale signs: the GPU is only at 40-60%, and the frame rate doesn't change when you stop streaming |
+| **Frame rate locked at exactly 30fps** | The game is in exclusive fullscreen. See [game-tuning.md](game-tuning.md#1-frame-rate-locked-at-exactly-30fps). Telltale signs: the GPU is only at 40–60%, and the frame rate doesn't change when you stop streaming |
 | **Horizontal tearing** | Moonlight is missing `--vsync` |
 | **Blurry / blocky image** | The adaptive bitrate has throttled it down. Check AWDL ([network.md](network.md)) and your bitrate settings |
 | **Screenshots come out pure black** | Same as the "all black" row — EDID |
@@ -95,13 +96,20 @@ echo "== GPU =="; nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw 
 On a healthy machine the output should look like:
 
 ```
-== X server ==      12345 /usr/lib/xorg/Xorg :200 -config ...
-== resolution / DPI ==  dimensions: 2560x1664 pixels (680x440 millimeters)
-                   resolution: 96x96 dots per inch
-== renderer ==OpenGL renderer string: NVIDIA GeForce RTX 3070 Laptop GPU/PCIe/SSE2
-== framebuffer ==srgb(255,0,0)          <- red means the EDID is working
-== virtual input devices ==5
-== virtual input devices (Xorg) == 4
-== window manager ==  ok
-== Sunshine ==        ok
+== X server ==                      12345 /usr/lib/xorg/Xorg :200 -config ...
+== resolution / DPI ==              dimensions: 2560x1664 pixels (680x440 millimeters)
+                                    resolution: 96x96 dots per inch
+== renderer ==                      OpenGL renderer string: NVIDIA GeForce RTX 3070 Laptop GPU/PCIe/SSE2
+== framebuffer ==                   srgb(255,0,0)          <- red means the EDID is working
+== virtual input devices ==         5
+== virtual input devices (Xorg) ==  4
+== window manager ==                ✓
+== Sunshine ==                      ✓
 ```
+
+Three things are worth checking in that output:
+
+- **`OpenGL renderer` is your actual GPU**, not `llvmpipe` — otherwise you're on software rendering
+- **`srgb(255,0,0)`** — the framebuffer is readable, which means the EDID is doing its job
+- **`5` virtual input devices in the kernel and `4` claimed by Xorg** — the mismatch is normal
+  (one of them, the touchscreen, is not something Xorg picks up as a slave device)

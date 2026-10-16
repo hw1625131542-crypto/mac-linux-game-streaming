@@ -1,4 +1,5 @@
 # Network: eliminating micro-stutter for good
+
 > 🌐 [中文](zh-CN/network.md) ｜ **English**
 
 Game streaming is far less tolerant of a network than you would expect: a slightly higher average

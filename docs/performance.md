@@ -2,7 +2,6 @@
 
 > 🌐 [中文](zh-CN/performance.md) ｜ **English**
 
-
 ## The short version
 
 **For GPU gaming on a headless Linux box, never use `Xvfb` as the virtual display.**

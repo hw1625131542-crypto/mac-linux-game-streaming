@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../macos-client.md)
 
-
 对应脚本：`scripts/mac/start-stream.command`
 
 ## 三个必须加的参数

@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../input.md)
 
-
 对应脚本：`scripts/30-fix-input-permissions.sh`
 
 ## Sunshine 是怎么把输入送进游戏的

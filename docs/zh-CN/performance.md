@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../performance.md)
 
-
 ## 结论先讲
 
 **无头 Linux 上跑 GPU 游戏，绝对不要用 `Xvfb` 当虚拟显示器。**

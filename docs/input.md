@@ -2,7 +2,6 @@
 
 > 🌐 [中文](zh-CN/input.md) ｜ **English**
 
-
 Script: `scripts/30-fix-input-permissions.sh`
 
 ## How Sunshine gets input into the game

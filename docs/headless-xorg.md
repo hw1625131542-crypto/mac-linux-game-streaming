@@ -2,7 +2,6 @@
 
 > 🌐 [中文](zh-CN/headless-xorg.md) ｜ **English**
 
-
 Scripts: `scripts/20-setup-headless-xorg.sh` + `scripts/make-edid.py`
 
 ## The big picture

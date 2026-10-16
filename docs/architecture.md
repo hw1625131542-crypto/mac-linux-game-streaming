@@ -2,7 +2,6 @@
 
 > 🌐 [中文](zh-CN/architecture.md) ｜ **English**
 
-
 ## Data flow
 
 ```

@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../troubleshooting.md)
 
-
 按「你看到的现象」找。每条都给了判断命令。
 
 ---

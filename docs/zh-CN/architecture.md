@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../architecture.md)
 
-
 ## 数据流
 
 ```

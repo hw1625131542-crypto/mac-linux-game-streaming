@@ -2,7 +2,6 @@
 
 > 🌐 **中文** ｜ [English](../headless-xorg.md)
 
-
 对应脚本：`scripts/20-setup-headless-xorg.sh` + `scripts/make-edid.py`
 
 ## 整体思路

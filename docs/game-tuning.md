@@ -1,4 +1,5 @@
 # In-game tuning: when the hardware has headroom but the frame rate won't move
+
 > 🌐 [中文](zh-CN/game-tuning.md) ｜ **English**
 
 Once the streaming link is fixed, the frame rate often still sticks at some strange value. This
@@ -97,7 +98,7 @@ p50=60 p98=30 p99.5=30 fps   <- frame-time distribution, more useful than the in
 ```
 
 `p50=60` means more than half your frames are full frames and only 2% dip to 30 — a far better
-experience than "45fps average but constantly swinging".
+experience than "45fps average but constantly fluctuating".
 
 ## 5. Handling vsync
 

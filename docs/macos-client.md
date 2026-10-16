@@ -1,4 +1,5 @@
 # Mac client: the right Moonlight flags
+
 > 🌐 [中文](zh-CN/macos-client.md) ｜ **English**
 
 Related script: `scripts/mac/start-stream.command`
@@ -39,7 +40,8 @@ flag and it's fixed.
 
 ### `--display-mode windowed` — don't use fullscreen
 
-Beyond the 30fps trap covered below, windowed mode is simply easier to debug in a headless setup.
+Beyond the 30fps exclusive-fullscreen trap in [game-tuning.md](game-tuning.md), windowed mode is
+simply easier to debug in a headless setup.
 If you want the fullscreen look, just have the **server** strip the title bar off the game window
 (`50-session-up.sh` adds the openbox rule for you).
 
