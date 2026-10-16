@@ -1,78 +1,88 @@
-# 性能：为什么不能用 Xvfb（附实测数据）
+# Performance: why you can't use Xvfb (with real measurements)
 
-## 结论先讲
+> 🌐 [中文](zh-CN/performance.md) ｜ **English**
 
-**无头 Linux 上跑 GPU 游戏，绝对不要用 `Xvfb` 当虚拟显示器。**
-它没有任何 GPU 加速接口，会把你锁在一个极低的帧率上，而且现象很迷惑人：
-显卡占用不高、CPU 也不忙，但帧率就是上不去。
 
-用**真正跑在显卡上的 Xorg**（`20-setup-headless-xorg.sh` 就是干这个的）。
+## The short version
 
-## 实测数据
+**For GPU gaming on a headless Linux box, never use `Xvfb` as the virtual display.**
+It has no GPU acceleration path at all, so it locks you to an absurdly low framerate — and the
+symptom is deeply misleading: GPU utilization is low, the CPU isn't busy either, yet the framerate
+simply won't climb.
 
-同一台机器（i7-11370H + RTX 3070 Laptop Max-Q）、同一个虚拟屏分辨率
-（2560×1664）、同一个测试程序 `glxgears`：
+Use a **real Xorg running on the GPU** instead (that's what `20-setup-headless-xorg.sh` sets up).
 
-| 渲染路径 | 帧率 |
+## Measurements
+
+Same machine (i7-11370H + RTX 3070 Laptop Max-Q), same virtual display resolution (2560×1664),
+same benchmark (`glxgears`):
+
+| Rendering path | Framerate |
 |---|---|
-| NVIDIA 显卡 → **Xvfb** | **15 fps** |
-| 纯 CPU 软件渲染（llvmpipe） | 85 fps |
-| NVIDIA 显卡 → **真 Xorg（headless）** | **4800 fps**（关垂直同步） |
+| NVIDIA GPU → **Xvfb** | **15 fps** |
+| Pure CPU software rendering (llvmpipe) | 85 fps |
+| NVIDIA GPU → **real Xorg (headless)** | **4800 fps** (vsync off) |
 
-再看「帧率 vs 分辨率」的关系（仍然是最简的 glxgears）：
+Now the framerate-vs-resolution relationship (still plain `glxgears`):
 
-| 窗口大小 | 帧率 |
+| Window size | Framerate |
 |---|---|
 | 2560×1664 | 15 fps |
 | 1280×832 | 54 fps |
 | 960×624 | 60 fps |
 | 800×600 | 122 fps |
 
-**帧率严格和像素数成反比** —— 这是纯带宽瓶颈的特征。
+**The framerate is strictly inversely proportional to the pixel count** — the signature of a pure
+bandwidth bottleneck.
 
-## 原因
+## Why
 
-Xvfb 是个纯软件的 X 服务器。显卡渲染完一帧之后，没有办法把结果直接交给它
-（Xvfb 不支持 DRI3，也就没有零拷贝的缓冲共享），只能：
-
-```
-GPU 渲染到自己的离屏缓冲  →  用 CPU 把整张画面读回来  →  塞进 Xvfb 的缓冲
-```
-
-2560×1664 一张画面就是 `2560 × 1664 × 4 ≈ 17 MB`。这条「读回来」的通路实测
-吞吐约 **65 MPix/s**（≈256 MB/s），于是：
+Xvfb is a pure-software X server. Once the GPU has rendered a frame, there's no way to hand the
+result straight to it (Xvfb doesn't support DRI3, so there's no zero-copy buffer sharing). The only
+option is:
 
 ```
-2560 × 1664 = 4.26 MPix  ÷  65 MPix/s  ≈  65 ms/帧  →  15 fps
+GPU renders into its own offscreen buffer  →  the CPU copies the whole frame back  →  shoves it into Xvfb's buffer
 ```
 
-注意这个数字**跟游戏复杂度无关**：把 Minecraft 的光影关掉，帧率还是 15fps
-（我实测过，一模一样）。因为它卡在拷贝上，不是卡在渲染上。
+At 2560×1664 one frame is `2560 × 1664 × 4 ≈ 17 MB`. That "copy it back" path measures about
+**65 MPix/s** (≈256 MB/s) in practice, which gives you:
 
-## 换成真 Xorg 之后
+```
+2560 × 1664 = 4.26 MPix  ÷  65 MPix/s  ≈  65 ms/frame  →  15 fps
+```
 
-Xorg + NVIDIA 驱动的工作方式是：应用把帧渲染进**显存里的缓冲**，
-X 服务器直接拿这个缓冲去合成、扫描输出。整个过程没有 CPU 参与的画面拷贝。
+Note that this number **has nothing to do with how demanding the game is**: turn off Minecraft's
+shaders and the framerate is still 15fps (I measured it — identical). It's stuck on the copy, not on
+the rendering.
 
-那 17 MB/帧 的拷贝并没有消失 —— 但它从「渲染线程同步等待」变成了
-「Sunshine 在另一个进程里异步抓屏」，不再阻塞游戏的渲染循环。
+## After switching to a real Xorg
 
-## 怎么验证自己踩没踩这个坑
+Xorg + the NVIDIA driver work like this: applications render frames into **buffers in VRAM**, and
+the X server composites and scans out from that same buffer. At no point is a frame copied through
+the CPU.
+
+The 17 MB/frame copy doesn't disappear — but it changes from "the render thread blocks and waits for
+it" into "Sunshine grabs the screen asynchronously from another process", so it no longer stalls the
+game's render loop.
+
+## How to check whether you've walked into this trap
 
 ```bash
-# 1. 看虚拟屏是谁在跑
-pgrep -af "Xorg :200"      # 应该是 /usr/lib/xorg/Xorg，不是 Xvfb
+# 1. See what's actually running the virtual display
+pgrep -af "Xorg :200"      # should be /usr/lib/xorg/Xorg, not Xvfb
 
-# 2. 跑一下 glxgears（装 mesa-utils）
+# 2. Run glxgears (install mesa-utils)
 DISPLAY=:200 __GL_SYNC_TO_VBLANK=0 glxgears
 ```
 
-- 帧率 **几千** → 正常，显卡在直接渲染
-- 帧率 **十几** → 中招了，在看 Xvfb 的慢速拷贝
-- 帧率 **几十** → 可能跑在 llvmpipe 软件渲染上，检查 `glxinfo | grep renderer`
+- **Thousands** of fps → you're fine, the GPU is rendering directly
+- **Teens** of fps → you're bitten, and you're watching Xvfb's slow copy
+- **Tens** of fps → you may be on llvmpipe software rendering; check `glxinfo | grep renderer`
 
-## 那 15fps 到底是什么感觉
+## What 15fps actually feels like
 
-顺便，这个瓶颈还会让**鼠标键盘看起来像坏了**：画面 15fps、光标几乎不动，
-你会以为是输入链路出问题，然后去查一堆无关的东西。
-先把帧率修好，再去排查输入 —— 顺序反了会浪费很多时间。
+Incidentally, this bottleneck also makes the **mouse and keyboard look broken**: 15fps video with a
+cursor that barely moves, and you'll conclude the input path is at fault and go audit a pile of
+unrelated things. Fix the framerate first, then debug input — doing it in the other order wastes a
+lot of time.

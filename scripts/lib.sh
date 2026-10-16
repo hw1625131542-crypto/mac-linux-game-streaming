@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Shared helpers sourced by every other script: loads config.env into the
+#  environment, provides logging, and has small checks (is an X display up?).
+#  You never run this file directly.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  公共函数库 —— 其它脚本都会 source 这个文件
 #  不要直接运行它

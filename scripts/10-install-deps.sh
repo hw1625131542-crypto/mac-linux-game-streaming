@@ -1,4 +1,11 @@
 #!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Installs the dependencies this approach relies on (x11-utils for `cvt`,
+#  xdotool, mesa-utils for glxinfo/glxgears, openbox, imagemagick), then checks
+#  that an NVIDIA driver and Xorg's nvidia driver module are actually present.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  ① 装依赖
 #

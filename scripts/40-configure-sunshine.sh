@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Writes the Sunshine config. Three options are non-negotiable on a headless
+#  box:  capture = x11       (the automatic path tries Wayland portal first,
+#                             which always fails on a virtual display)
+#        system_tray = false (no system tray exists, so Sunshine's main loop
+#                             would exit immediately)
+#        sunshine_name       (must match the name the Mac expects, or Moonlight
+#                             reports "Found unexpected PC ... looking for ...")
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  ④ 写 Sunshine 配置
 #
@@ -49,6 +60,7 @@ fi
 
 cat >> "$TMP" <<EOF
 
+# ---- written by mac-linux-game-streaming below ----
 # ---- 以下由 mac-linux-game-streaming 写入 ----
 capture = x11
 encoder = ${SUNSHINE_ENCODER:-nvenc}

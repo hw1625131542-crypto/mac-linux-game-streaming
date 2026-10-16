@@ -1,44 +1,48 @@
-# 架构
+# Architecture
 
-## 数据流
+> 🌐 [中文](zh-CN/architecture.md) ｜ **English**
+
+
+## Data flow
 
 ```
-┌─ Linux 服务器（无显示器）─────────────────────────────────────────┐
-│                                                                   │
-│  ┌─ Xorg :200（systemd: gamestream-xorg，root 运行）────────────┐  │
-│  │   · 直接跑在 NVIDIA 显卡上                                    │  │
-│  │   · ConnectedMonitor 骗驱动「接了显示器」                      │  │
-│  │   · CustomEDID 提供时序与 DPI（没有它帧缓冲读不回来）          │  │
-│  │              ↑                                                │  │
-│  │   游戏渲染进显存里的缓冲，零 CPU 拷贝                          │  │
-│  └───────────────────────────────────────────────────────────────┘  │
-│         ↑ 键鼠事件                    ↓ 画面                        │
-│  ┌─ Sunshine（用户级服务，以普通用户跑）───────────────────────┐   │
-│  │   捕获：capture = x11（XCB 抓屏）                            │   │
-│  │   编码：encoder = nvenc（H.264/HEVC 硬编码）                 │   │
-│  │   输入：往 /dev/uinput 写 → 内核造出虚拟键鼠 → Xorg 热插拔认领 │   │
-│  └───────────────────────────────────────────────────────────────┘  │
-│         ↑ 输入流（UDP）               ↓ 视频/音频流（UDP）            │
-└───────────────────────────────────────────────────────────────────┘
-                          ↕ 局域网
-┌─ Mac ─────────────────────────────────────────────────────────────┐
-│  Moonlight（--absolute-mouse --vsync）                             │
-│    · 解码视频 → 显示                                               │
-│    · 采集键鼠/手柄 → 回传                                          │
-│    · AWDL 守卫：串流时关掉 awdl0，退出后恢复（保住 AirDrop）        │
-└───────────────────────────────────────────────────────────────────┘
+┌─ Linux host (no monitor attached) ─────────────────────────────────────────────────────┐
+│                                                                                        │
+│  ┌─ Xorg :200 (systemd: gamestream-xorg, runs as root) ─────────────────────────────┐  │
+│  │   · runs straight on the NVIDIA GPU                                              │  │
+│  │   · ConnectedMonitor makes the driver believe a monitor is attached              │  │
+│  │   · CustomEDID provides the timing and DPI (without it, no framebuffer readback) │  │
+│  │              ↑                                                                   │  │
+│  │   the game renders into a VRAM buffer, zero CPU copies                           │  │
+│  └──────────────────────────────────────────────────────────────────────────────────┘  │
+│         ↑ keyboard/mouse events                  ↓ video frames                        │
+│  ┌─ Sunshine (user service, runs as an unprivileged user) ──────────────────────────┐  │
+│  │   capture : capture = x11 (XCB screen grab)                                      │  │
+│  │   encode  : encoder = nvenc (H.264/HEVC hardware encoding)                       │  │
+│  │   input   : write to /dev/uinput → the kernel creates a virtual                  │  │
+│  │             mouse/keyboard → Xorg claims it via udev hotplug                     │  │
+│  └──────────────────────────────────────────────────────────────────────────────────┘  │
+│         ↑ input stream (UDP)                     ↓ video/audio stream (UDP)            │
+└────────────────────────────────────────────────────────────────────────────────────────┘
+                                     ↕ LAN
+┌─ Mac ──────────────────────────────────────────────────────────────────────────────────┐
+│  Moonlight (--absolute-mouse --vsync)                                                  │
+│    · decode video → display                                                            │
+│    · capture mouse/keyboard/gamepad → send back                                        │
+│    · AWDL guard: off while streaming, restored afterwards (keeps AirDrop)              │
+└────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 端口
+## Ports
 
-| 端口 | 用途 |
+| Port | Purpose |
 |---|---|
-| 47989/tcp | 服务发现（HTTP） |
-| 47984/tcp | 配对握手（HTTPS） |
-| 47990/tcp | Web 管理界面 |
-| 48010/tcp + 47998-48010/udp | 视频/音频/控制流 |
+| 47989/tcp | Service discovery (HTTP) |
+| 47984/tcp | Pairing handshake (HTTPS) |
+| 47990/tcp | Web admin UI |
+| 48010/tcp + 47998-48010/udp | Video / audio / control streams |
 
-服务端有 ufw 的话记得放行（同一个局域网内）：
+If the host runs ufw, remember to allow them (same LAN):
 
 ```bash
 sudo ufw allow from 192.168.0.0/16 to any port 47984,47989,47990,48010 proto tcp
@@ -46,44 +50,47 @@ sudo ufw allow from 192.168.0.0/16 to any port 47998:48010 proto udp
 sudo ufw reload
 ```
 
-## 为什么是「整个桌面」而不是「单个应用」
+## Why "the whole desktop" instead of "a single app"
 
-Moonlight 的两种串流模式：
+Moonlight's two streaming modes:
 
-| 模式 | 做法 | 优点 | 缺点 |
+| Mode | How it works | Pros | Cons |
 |---|---|---|---|
-| **Desktop（本方案）** | 串流整个虚拟桌面 | 什么游戏都能跑，不用为每个游戏写配置；启动器/游戏内菜单都能操作 | 需要窗口管理器；分辨率固定 |
-| Application | 直接启动某个程序并串流它的窗口 | 更省资源 | 需要在 Sunshine 的 `apps.json` 里配每个游戏；启动器一类的 UI 反而不好操作 |
+| **Desktop (this approach)** | Streams an entire virtual desktop | Any game runs, no per-game config to write; you can drive launchers and in-game menus | Needs a window manager; resolution is fixed |
+| Application | Launches one program and streams its window | Lighter on resources | Every game has to be configured in Sunshine's `apps.json`; launcher-style UIs are actually harder to drive |
 
-本方案选 Desktop，因为**很多游戏的正版登录必须由官方启动器完成**，
-你需要在串流里看到并操作启动器界面。
+This project picks Desktop because **a lot of games require their official launcher to complete
+the login**, so you need to see and click through that launcher inside the stream.
 
-## 组件的生命周期
+## Component lifecycle
 
-| 组件 | 谁拉起 | 挂了会怎样 |
+| Component | Started by | What happens when it dies |
 |---|---|---|
-| `gamestream-xorg` | systemd（系统级，`Restart=always`） | 自动重启；串流断，重连即可 |
-| Sunshine | systemd 用户级服务（`Restart=on-failure`） | 自动重启 |
-| openbox | `50-session-up.sh` 每次确保在跑 | 游戏窗口拿不到焦点，键鼠失灵 |
-| 游戏 | `50-session-up.sh` 启动 | 手动重启，或重新跑一次脚本 |
+| `gamestream-xorg` | systemd (system-level, `Restart=always`) | Restarts automatically; the stream drops, just reconnect |
+| Sunshine | systemd user service (`Restart=on-failure`) | Restarts automatically |
+| openbox | `50-session-up.sh` makes sure it's running | Game windows never get focus and input stops working |
+| Game | launched by `50-session-up.sh` | Restart it by hand, or re-run the script |
 
-`50-session-up.sh` 是**幂等**的：Mac 端每次双击都会调用它，
-重复调用不会开出第二个游戏实例、不会重置会话。
+`50-session-up.sh` is **idempotent**: the Mac side calls it on every double-click, and calling it
+again won't spawn a second game instance or reset your session.
 
-## 关键设计取舍
+## Key design tradeoffs
 
-**为什么 display 编号放在单独的文件里（`~/gamestream-xorg.env`）？**
-换 display 编号不需要编辑 root 拥有的 systemd 单元，改个用户文件 + 重启服务就行：
+**Why does the display number live in its own file (`~/gamestream-xorg.env`)?**
+Changing the display number shouldn't mean editing a root-owned systemd unit — edit a user file and
+restart the service:
 
 ```bash
 echo 'GS_DISPLAY=:201' > ~/gamestream-xorg.env
 sudo -n systemctl restart gamestream-xorg
 ```
 
-**为什么 Xorg 用 `-ac`？**
-关掉 X 的访问控制，同机普通用户（Sunshine、xdotool）才能连上。
-单用户机器没问题，多人共用请改用 Xauthority cookie。
+**Why does Xorg run with `-ac`?**
+It turns off X's access control, so ordinary users on the same machine (Sunshine, xdotool) can
+connect to it. That's fine on a single-user box; on a shared machine, hand out Xauthority cookies
+instead.
 
-**为什么服务端脚本要容忍 sudo 失败？**
-`50-session-up.sh` 里用 `sudo -n`（非交互）。如果免密规则没配好，
-它会打印提示而不是卡住等密码 —— 因为它是从 Mac 端通过 SSH 非交互调用的。
+**Why should the host scripts tolerate sudo failing?**
+`50-session-up.sh` uses `sudo -n` (non-interactive). If the passwordless rules aren't set up, it
+prints a hint instead of hanging on a password prompt — because the Mac side calls it over SSH,
+non-interactively.

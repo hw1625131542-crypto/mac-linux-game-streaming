@@ -1,119 +1,123 @@
-# 网络：把「轻微卡顿」彻底干掉
+# Network: eliminating micro-stutter for good
+> 🌐 [中文](zh-CN/network.md) ｜ **English**
 
-游戏串流对网络的容忍度比想象中低得多：平均延迟高一点没事，
-**抖动（jitter）和突发丢包**才是杀手。
+Game streaming is far less tolerant of a network than you would expect: a slightly higher average
+latency is harmless. **Jitter and burst packet loss** are the killers.
 
-## 一、macOS 的 AWDL：最容易被冤枉的元凶
+## 1. macOS AWDL: the culprit nobody suspects
 
-### 症状
+### Symptoms
 
-- 每隔几秒轻微卡一下，说不清规律
-- 丢包率看着不高（ping 都不丢包）
-- 服务端日志里是**突发丢包**：一次丢 4~13 个包
-- Sunshine/Moonlight 的自适应码率一路往下掉，越掉越糊，但卡顿依旧
+- A brief hitch every few seconds, with no discernible pattern
+- Packet loss looks low (even `ping` drops nothing)
+- The server log shows **burst packet loss**: 4–13 packets dropped at once
+- Sunshine/Moonlight's adaptive bitrate keeps ratcheting down — the picture gets blurrier and
+  blurrier — and the stutter stays exactly the same
 
-### 原因
+### Cause
 
-Mac 上有个叫 **AWDL**（Apple Wireless Direct Link）的东西，是 AirDrop、
-接力（Handoff）、通用剪贴板、隔空播放用的**直连无线电**。
-它会周期性把 Wi-Fi 电台切到"社交信道"约 **100 毫秒** —— 这 100ms 里所有包全丢。
+Every Mac runs something called **AWDL** (Apple Wireless Direct Link): the **direct radio link**
+behind AirDrop, Handoff, Universal Clipboard, and AirPlay. It periodically retunes the Wi-Fi radio
+to a "social channel" for roughly **100 milliseconds** — and during those 100 ms, every packet is
+dropped.
 
 ```
 $ ifconfig awdl0
 awdl0: flags=8863<UP,BROADCAST,SMART,RUNNING,SIMPLEX,MULTICAST> mtu 1500
-                  ↑↑↑ 这个 UP 就是它开着的证据
+                  ↑↑↑ that UP flag is the proof it is enabled
 ```
 
-### 实测数据
+### Measured results
 
-同一台 Mac、同一个 ping 目标、同样 60 个包：
+Same Mac, same ping target, same 60 packets:
 
-| | 抖动 max | 抖动 mdev |
+| | jitter max | jitter mdev |
 |---|---|---|
-| 开着 AWDL | **63.7 ms** | 12.7 ms |
-| 关掉 AWDL | **7.6 ms** | 1.4 ms |
+| AWDL on | **63.7 ms** | 12.7 ms |
+| AWDL off | **7.6 ms** | 1.4 ms |
 
-串流侧的连带效果：Moonlight 的自适应码率从被压到的 **5 Mbps** 恢复到 **52 Mbps**，
-丢帧次数归零。
+The knock-on effect on the stream: Moonlight's adaptive bitrate recovered from a throttled
+**5 Mbps** all the way back to **52 Mbps**, and dropped frames went to zero.
 
-### 为什么 FEC 救不了
+### Why FEC can't save you
 
-Sunshine 有前向纠错（`fec_percentage`），能补**零散**丢包。
-但 AWDL 造成的是**突发**：一帧视频才 4~7 个包，一口气丢 4~13 个，FEC 补不回来。
-实测把 FEC 从 40% 加到 80% 也没用，因为那是丢包形态的问题，不是量的问题。
+Sunshine has forward error correction (`fec_percentage`), which can patch up **scattered** loss.
+What AWDL produces is **bursts**: a single video frame is only 4–7 packets, and 4–13 of them
+disappear at once, so FEC has nothing to work with. In testing, raising FEC from 40% to 80% changed
+nothing — the problem is the *shape* of the loss, not the amount.
 
-日志长这样：
+The log looks like this:
 
 ```
-Unrecoverable frame 1106: 2+2=4 received < 5 needed     ← 一帧只要 5 个包
-Unrecoverable frame 1515: 0+1=1 received < 5 needed     ← 5 个包里丢了 4 个
+Unrecoverable frame 1106: 2+2=4 received < 5 needed     <- a frame needs only 5 packets
+Unrecoverable frame 1515: 0+1=1 received < 5 needed     <- 4 of those 5 packets were lost
                                     ↑
-                          加号后面是 FEC 救回来的数量
+                          the number after the + is how many FEC recovered
 ```
 
-### 两个解法
+### Two fixes
 
-**方案 A：串流时自动关，退出后恢复**（推荐，AirDrop 照常可用）
+**Option A: disable it while streaming, restore it afterwards** (recommended — AirDrop keeps working)
 
 ```bash
 sudo bash scripts/mac/install-awdl-guard.sh
 ```
 
-它装一个 LaunchDaemon：检测到 Moonlight 在串流就 `ifconfig awdl0 down`，
-退出就 `up`。
+It installs a LaunchDaemon: when it detects that Moonlight is streaming it runs
+`ifconfig awdl0 down`, and `up` again once you quit.
 
-**方案 B：一直关着**
+**Option B: leave it off permanently**
 
 ```bash
 sudo ifconfig awdl0 down
 ```
 
-代价是 AirDrop / 接力 / 通用剪贴板失效。
+The price: AirDrop / Handoff / Universal Clipboard stop working.
 
-### 验证方法
+### How to verify
 
 ```bash
-# 串流开着的时候，从服务器 ping Mac，看抖动
-ping -c 60 -i 0.1 <Mac的IP>
-# mdev 应该 < 2ms；如果 > 10ms 就该查 AWDL 了
+# With a stream running, ping the Mac from the server and watch the jitter
+ping -c 60 -i 0.1 <Mac-IP>
+# mdev should be < 2ms; if it's > 10ms, it's time to look at AWDL
 ```
 
-## 二、码率怎么定
+## 2. Choosing a bitrate
 
-经验值（配合 `fec_percentage` 一起调）：
+Starting points (tune them together with `fec_percentage`):
 
-| 链路 | 建议码率 | FEC |
+| Link | Suggested bitrate | FEC |
 |---|---|---|
-| 千兆有线 | 50000~80000 Kbps | 20 |
-| 百兆有线 | 35000~45000 Kbps | 30 |
-| Wi-Fi 5GHz 同房间 | 25000~40000 Kbps | 40~60 |
-| Wi-Fi 信号一般 | 15000~25000 Kbps | 60 |
+| Gigabit Ethernet | 50000–80000 Kbps | 20 |
+| 100 Mbps Ethernet | 35000–45000 Kbps | 30 |
+| Wi-Fi 5GHz, same room | 25000–40000 Kbps | 40–60 |
+| Wi-Fi, mediocre signal | 15000–25000 Kbps | 60 |
 
-注意 **FEC 会按比例增加实际带宽占用**：`fec_percentage = 40` 时，
-35 Mbps 的视频实际要占 ~49 Mbps。
+Be aware that **FEC inflates your real bandwidth usage in proportion**: with
+`fec_percentage = 40`, a 35 Mbps video stream actually occupies ~49 Mbps.
 
 ```ini
 # ~/.config/sunshine/sunshine.conf
 fec_percentage = 40
 ```
 
-## 三、看日志判断问题类型
+## 3. Reading the log to identify the problem
 
-Moonlight 的日志（`/tmp/Moonlight-*.log`）里：
+In Moonlight's log (`/tmp/Moonlight-*.log`):
 
-| 日志 | 含义 | 对策 |
+| Log line | Meaning | What to do |
 |---|---|---|
-| `Network dropped 1 frame (frame N)` | 某帧的包没收齐 | 提高 FEC |
-| `Unrecoverable frame N: a+b=c received < d needed` | 丢太多，FEC 也补不回来 | 降码率 / 修 AWDL |
-| `Unable to recover audio data block` | 音频包成组丢失 | 同上（音频包是 4 个一组） |
-| `Connection status update: 1` | 客户端判定链路变差 | 自适应码率会开始降 |
+| `Network dropped 1 frame (frame N)` | One frame didn't receive all of its packets | Raise FEC |
+| `Unrecoverable frame N: a+b=c received < d needed` | Too much loss for FEC to repair | Lower the bitrate / fix AWDL |
+| `Unable to recover audio data block` | A whole group of audio packets was lost | Same as above (audio packets travel in groups of 4) |
+| `Connection status update: 1` | The client has decided the link got worse | The adaptive bitrate will start dropping |
 
-## 四、别忽略的几点
+## 4. Things not to overlook
 
-**串流走局域网，不要走内网穿透。** 检查方法（在服务器上）：
+**Stream over the LAN, not through a NAT-traversal tunnel.** How to check (on the server):
 
 ```bash
-# 看视频流从哪个网卡出去
+# See which NIC the video stream leaves through
 for i in eno1 tailscale0; do
   a=$(cat /sys/class/net/$i/statistics/tx_bytes 2>/dev/null || echo 0); sleep 5
   b=$(cat /sys/class/net/$i/statistics/tx_bytes 2>/dev/null || echo 0)
@@ -121,16 +125,18 @@ for i in eno1 tailscale0; do
 done
 ```
 
-视频应该从局域网网卡出去（几十 Mbps），Tailscale/隧道网卡接近 0。
-Tailscale 虽然方便，但一旦走 DERP 中继，延迟和抖动都会很难看。
+The video should be leaving through your LAN interface (tens of Mbps), with the Tailscale/tunnel
+interface near 0. Tailscale is convenient, but the moment traffic falls back to a DERP relay, both
+latency and jitter look terrible.
 
-**5GHz 信道别和邻居撞。** macOS 可以看周围网络：
+**Don't let your 5GHz channel collide with a neighbor's.** macOS can list the networks around you:
 
 ```bash
 system_profiler SPAirPortDataType | grep -A3 "Other Local Wi-Fi Networks"
 ```
 
-如果你的信道和邻居的 80MHz 块重叠（比如你 157、邻居 149，同属 149-161 那一段），
-换到 36-48 或 100-112 会干净很多。
+If your channel overlaps a neighbor's 80MHz block (say you're on 157 and they're on 149 — both
+inside the 149-161 span), moving to 36-48 or 100-112 will be much cleaner.
 
-**有线永远最好。** Mac 用 USB-C 转网口，上面所有问题一次性消失。
+**Wired always wins.** Put a USB-C Ethernet adapter on the Mac and every problem above disappears
+at once.

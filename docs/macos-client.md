@@ -1,11 +1,12 @@
-# Mac 端：Moonlight 的正确参数
+# Mac client: the right Moonlight flags
+> 🌐 [中文](zh-CN/macos-client.md) ｜ **English**
 
-对应脚本：`scripts/mac/start-stream.command`
+Related script: `scripts/mac/start-stream.command`
 
-## 三个必须加的参数
+## Three flags you must pass
 
 ```bash
-Moonlight stream "<主机名>" "Desktop" \
+Moonlight stream "<host-name>" "Desktop" \
     --resolution 2560x1664 \
     --fps 60 \
     --bitrate 35000 \
@@ -14,37 +15,40 @@ Moonlight stream "<主机名>" "Desktop" \
     --vsync
 ```
 
-### `--absolute-mouse` —— 不加的话鼠标会「消失」
+### `--absolute-mouse` — without it, your mouse "disappears"
 
-**症状**：鼠标一点进 Moonlight 窗口就看不见了，怎么移都移不出来，
-只能切 Space（多桌面）逃出来。
+**Symptom**: the moment you click into the Moonlight window the cursor is gone. You can't move it
+back out no matter what you try, and your only escape is switching Spaces (multiple desktops).
 
-**原因**：Moonlight 默认用「相对鼠标 + 指针捕获」，那是给 FPS 游戏设计的：
-一点进窗口就把本地光标隐藏并锁住，把所有移动当相对位移发给远端。
+**Cause**: Moonlight defaults to *relative mouse + pointer capture*, which is designed for FPS
+games — click into the window and it hides and locks the local cursor, then sends every movement to
+the remote side as a relative delta.
 
-对**远程桌面**这是灾难。加上 `--absolute-mouse` 之后：本地光标始终可见、
-不会被锁，远端光标跟着你的位置一一对应。
+For a **remote desktop** that's a disaster. With `--absolute-mouse`, the local cursor stays visible
+and never gets locked, and the remote cursor follows your position one-to-one.
 
-> 万一还是被锁住了（比如忘了加参数），Moonlight 的快捷键：
-> `Ctrl+Alt+Shift+M` 切换鼠标模式，`Ctrl+Alt+Shift+Q` 退出串流。
-> 这几个键位可以从 Moonlight 二进制里确认：
+> If you do get locked in anyway (say you forgot the flag), these are Moonlight's shortcuts:
+> `Ctrl+Alt+Shift+M` switches the mouse mode, `Ctrl+Alt+Shift+Q` quits the stream.
+> You can confirm these bindings straight from the Moonlight binary:
 > `strings /Applications/Moonlight.app/Contents/MacOS/Moonlight | grep "Ctrl+Alt"`
 
-### `--vsync` —— 不加的话画面撕裂
+### `--vsync` — without it, the picture tears
 
-Moonlight 默认不等垂直同步，画面会出现横向撕裂。加上就好。
+Moonlight doesn't wait for vertical sync by default, so the image shows horizontal tearing. Add the
+flag and it's fixed.
 
-### `--display-mode windowed` —— 别用全屏
+### `--display-mode windowed` — don't use fullscreen
 
-除了下面那节讲的 30fps 陷阱，窗口模式在无头环境里也更好调试。
-想要满屏观感的话，在**服务端**给游戏窗口去掉标题栏就够了
-（`50-session-up.sh` 会自动加 openbox 规则）。
+Beyond the 30fps trap covered below, windowed mode is simply easier to debug in a headless setup.
+If you want the fullscreen look, just have the **server** strip the title bar off the game window
+(`50-session-up.sh` adds the openbox rule for you).
 
-## 常见报错
+## Common errors
 
 ### `module "QtQuick.Controls" plugin "qtquickcontrols2plugin" not found`
 
-从命令行启动 Moonlight 时必现（GUI 双击没事）。必须显式指定 Qt 插件路径：
+This always shows up when you launch Moonlight from the command line (double-clicking the app is
+fine). You have to set the Qt plugin path explicitly:
 
 ```bash
 export QT_PLUGIN_PATH="/Applications/Moonlight.app/Contents/PlugIns"
@@ -53,50 +57,56 @@ export QML2_IMPORT_PATH="/Applications/Moonlight.app/Contents/Resources/qml"
 
 ### `Found unexpected PC "XXX" looking for "YYY"`
 
-Moonlight 里配对时记录的主机名，和现在 Sunshine 广播的名字不一致。
-把服务端 `sunshine.conf` 里的 `sunshine_name` 和 Moonlight 里那条记录改成一样的。
+The host name Moonlight recorded when you paired no longer matches the name Sunshine is currently
+broadcasting. Set `sunshine_name` in the server's `sunshine.conf` to the same value as that entry in
+Moonlight.
 
-### Moonlight 只允许单实例
+### Moonlight only allows a single instance
 
-命令行启动前先 `pkill -x Moonlight`，否则新进程会退出、你控制的是旧窗口。
+Run `pkill -x Moonlight` before launching from the command line, otherwise the new process exits
+and you're still controlling the old window.
 
-## 声音
+## Audio
 
-**症状**：有画面没声音。
+**Symptom**: you have video but no sound.
 
-先确认服务端链路是通的 —— 游戏音频应该出现在 Sunshine 的虚拟声卡上：
+First confirm the server-side chain is working — the game's audio should appear on Sunshine's
+virtual sound card:
 
 ```bash
-# 服务器上，游戏运行时
+# On the server, while the game is running
 XDG_RUNTIME_DIR=/run/user/$(id -u) pactl list sink-inputs | grep -E "Sink Input|application.name"
-# 应该能看到游戏的音频流，Sink 指向 sink-sunshine-stereo
+# You should see the game's audio stream, with Sink pointing at sink-sunshine-stereo
 ```
 
-如果服务端正常，那问题在 Mac 的**默认输出设备**：经常是外接显示器
-（走 DisplayPort 音频），而那台显示器没接音响、或者显示器自己的音量是 0。
+If the server side is fine, the problem is the Mac's **default output device**: it's often an
+external display (audio over DisplayPort), and that display either has no speakers connected or has
+its own volume at 0.
 
 ```bash
-# 编译一次小工具（见 scripts/mac/set-audio.swift）
+# Build the helper once (see scripts/mac/set-audio.swift)
 swiftc -O scripts/mac/set-audio.swift -o ~/bin/set-audio
 
-~/bin/set-audio                    # 列出所有输出设备，带 ← 的是当前默认
-~/bin/set-audio "MacBook"          # 切到内置扬声器
-~/bin/set-audio "DELL"             # 切回显示器/外接音响
+~/bin/set-audio                    # list every output device; ← marks the current default
+~/bin/set-audio "MacBook"          # switch to the built-in speakers
+~/bin/set-audio "DELL"             # switch back to the monitor / external speakers
 ```
 
-## 快捷键速查
+## Keyboard shortcut cheat sheet
 
-| 快捷键 | 作用 |
+| Shortcut | Action |
 |---|---|
-| `Ctrl+Alt+Shift+M` | 切换鼠标模式（绝对 ↔ 相对捕获）—— 光标被锁住时按这个 |
-| `Ctrl+Alt+Shift+Q` | 退出串流 |
-| `Ctrl+Alt+Shift+S` | 切换键盘抓取（让 Alt+Tab 之类的系统快捷键传给远端） |
-| `Ctrl+Alt+Shift+X` | 切换全屏 |
+| `Ctrl+Alt+Shift+M` | Toggle mouse mode (absolute ↔ relative capture) — press this when the cursor is locked |
+| `Ctrl+Alt+Shift+Q` | Quit the stream |
+| `Ctrl+Alt+Shift+S` | Toggle keyboard grab (lets system shortcuts like Alt+Tab reach the remote) |
+| `Ctrl+Alt+Shift+X` | Toggle fullscreen |
 
-（不同版本可能略有差异，用 `strings` 在二进制里搜 `Ctrl+Alt` 确认。）
+(These can differ slightly between versions — confirm by searching the binary for `Ctrl+Alt` with
+`strings`.)
 
-## 手柄
+## Gamepads
 
-Xbox / PS 手柄通过 Moonlight 直接可用，服务端会创建一个虚拟手柄。
-需要注意的是：**手柄走的是 uhid，和鼠标键盘的 uinput 是两套设备**，
-权限问题的排查见 [input.md](input.md)。
+Xbox and PlayStation controllers work through Moonlight out of the box; the server creates a virtual
+gamepad for them. One thing to keep in mind: **gamepads go through uhid, which is a completely
+separate device path from the uinput used by mouse and keyboard**. For permission troubleshooting,
+see [input.md](input.md).

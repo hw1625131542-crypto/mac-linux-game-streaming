@@ -1,4 +1,13 @@
 #!/bin/bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  The Mac-side one-click entry point. SSHes to the host to run the server's
+#  50-session-up.sh, then launches Moonlight with the three flags desktop
+#  streaming requires: --absolute-mouse (otherwise the local cursor gets hidden
+#  and trapped the moment you click in), --vsync (otherwise tearing), and
+#  --display-mode windowed.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  Mac 端一键串流（Finder 里双击运行）
 #

@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Idempotent session bring-up, called by the Mac's one-click script over SSH:
+#  make sure Xorg, Sunshine, a window manager and the game are all running, then
+#  size the game window and (optionally) auto-click the launcher's Play button.
+#
+#  A window manager is mandatory, not cosmetic: without one, newly opened
+#  windows never receive input focus and the streamed mouse/keyboard appear dead.
+#  Idempotency matters: running this twice must not spawn a second game.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  ⑤ 一键拉起串流会话（幂等，可以反复跑）
 #

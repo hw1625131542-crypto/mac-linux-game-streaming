@@ -1,4 +1,11 @@
 #!/bin/bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Installs awdl-guard.sh as a LaunchDaemon that re-checks every 3 seconds
+#  (launchd throttles this to ~10s in practice, which is fine).
+#  See awdl-guard.sh for why this exists.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  Mac：安装 AWDL 智能守卫（LaunchDaemon，每 3 秒检查一次）
 #

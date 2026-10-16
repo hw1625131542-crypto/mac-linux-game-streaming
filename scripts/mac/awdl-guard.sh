@@ -1,4 +1,17 @@
 #!/bin/bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Disables AWDL — Apple Wireless Direct Link, the radio behind AirDrop and
+#  Handoff — while Moonlight is streaming, and restores it afterwards, so
+#  AirDrop keeps working when you are not gaming.
+#
+#  Why: AWDL periodically retunes the Wi-Fi radio to a "social channel" for
+#  ~100ms. In that window everything is lost, in bursts of 4-13 packets, which
+#  is exactly the shape that forward error correction cannot repair. Measured
+#  jitter drops from 63.7ms (max) / 12.7ms (mdev) to 7.6ms / 1.4ms when AWDL is
+#  off, and the stream's adaptive bitrate recovers to full.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  Mac：AWDL 智能守卫（串流时自动关，退出后自动恢复）
 #

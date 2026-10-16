@@ -1,36 +1,41 @@
-# 游戏内调优：那些「硬件明明有余力却跑不动」的坑
+# In-game tuning: when the hardware has headroom but the frame rate won't move
+> 🌐 [中文](zh-CN/game-tuning.md) ｜ **English**
 
-串流链路修好之后，帧率往往还卡在某个奇怪的值上。这一节是排查顺序。
+Once the streaming link is fixed, the frame rate often still sticks at some strange value. This
+section is the order to work through.
 
-## 一、帧率死锁在「正好 30fps」
+## 1. Frame rate locked at exactly 30fps
 
-### 症状
+### Symptoms
 
-- 帧率恰好是 30（不是 28、不是 33，就是 30）
-- GPU 占用只有 **40%~60%**，明显没吃满
-- 把串流完全停掉（`systemctl --user stop sunshine`）再测，**帧率纹丝不动**
+- The frame rate is exactly 30 — not 28, not 33, exactly 30
+- GPU utilization is only **40–60%**, clearly nowhere near saturated
+- Stop streaming entirely (`systemctl --user stop sunshine`) and measure again: **the frame rate
+  doesn't move at all**
 
-最后一条是关键：它证明瓶颈既不在串流、也不在硬件。
+That last point is the key one: it proves the bottleneck is neither the stream nor the hardware.
 
-### 原因：独占全屏（Exclusive Fullscreen）
+### Cause: exclusive fullscreen
 
-在无头虚拟显示上，「独占全屏」这条呈现路径会锁在 30fps。
-（原理上它要接管显示模式/垂直同步，而虚拟输出的时序语义和真实显示器不同。）
+On a headless virtual display, the exclusive-fullscreen presentation path locks itself to 30fps.
+(In principle it wants to take over the display mode and vsync, but the timing semantics of a
+virtual output are not the same as a real monitor's.)
 
-### 解法
+### Fix
 
-把游戏的显示模式改成**窗口模式**：
+Switch the game's display mode to **windowed**:
 
-- Minecraft + Sodium：「选项 → 视频设置 → Fullscreen Mode」从 `Exclusive` 改成 `Off`
-- 其它游戏：找 Windowed / Borderless 之类的选项
+- Minecraft + Sodium: Options → Video Settings → Fullscreen Mode, change `Exclusive` to `Off`
+- Other games: look for an option along the lines of Windowed / Borderless
 
-实测同一套设置：独占全屏 **30fps** → 窗口模式 **45fps**，
-再叠加上后面几节就上到 60。
+Measured with everything else identical: exclusive fullscreen **30fps** → windowed **45fps**, and
+stacking the fixes in the sections below takes you to 60.
 
-**配套**：窗口模式会有标题栏，看着不爽。可以让窗口管理器把游戏窗口的装饰去掉：
+**Companion tweak**: windowed mode brings a title bar, which looks wrong. Have the window manager
+drop the game window's decorations instead:
 
 ```xml
-<!-- ~/.config/openbox/rc.xml，放在 <applications> 里 -->
+<!-- ~/.config/openbox/rc.xml, inside <applications> -->
 <application class="Minecraft*">
   <decor>no</decor>
   <maximized>true</maximized>
@@ -38,90 +43,95 @@
 </application>
 ```
 
-`50-session-up.sh` 会自动加这条规则。效果：看起来和全屏一样，但走的是窗口路径。
+`50-session-up.sh` adds this rule automatically. The result: it looks exactly like fullscreen, but
+it takes the windowed path.
 
-> **别按 F11。** 很多游戏里 F11 就是切独占全屏，一按又锁 30 了。
+> **Don't press F11.** In many games F11 is the exclusive-fullscreen toggle, and one press locks you
+> back to 30.
 
-## 二、GPU 吃满了（真的画质太高）
+## 2. The GPU really is maxed out (the settings are genuinely too high)
 
-如果 GPU 到 90%+，那就是真·性能不够，按性价比依次砍：
+If the GPU sits at 90%+, you genuinely don't have the performance. Cut settings in order of best
+value for the cost:
 
-| 手段 | 帧率收益 | 画质代价 |
+| Change | Frame rate gain | Image quality cost |
 |---|---|---|
-| **光影预设降一档**（High → Medium） | 大 | 小（阴影/反射细节） |
-| **渲染距离 16 → 12** | 中 | 小（远景少 4 个区块） |
-| **模拟距离降低** | 中 | 中（影响刷怪/红石） |
-| **关掉高品质云** | 小 | 小 |
-| **阴影渲染距离**（`iris.properties` 的 `maxShadowRenderDistance`） | 中 | 中 |
-| **串流分辨率降低** | 大 | 大（画面变糊） |
-| **关掉光影** | 巨大 | 巨大 |
+| **Shader preset one notch down** (High → Medium) | large | small (shadow/reflection detail) |
+| **Render distance 16 → 12** | medium | small (4 fewer chunks of view distance) |
+| **Lower the simulation distance** | medium | medium (affects mob spawning/redstone) |
+| **Turn off fancy clouds** | small | small |
+| **Shadow render distance** (`maxShadowRenderDistance` in `iris.properties`) | medium | medium |
+| **Lower the stream resolution** | large | large (the image goes soft) |
+| **Turn shaders off** | huge | huge |
 
-经验：一台 4 核 + 移动版 Max-Q 显卡的笔记本，2560×1664 + 光影，
-合理目标是 **60fps @ 光影 Medium**；想要 High/Ultra 就得降到 1080p。
+Rule of thumb: on a 4-core laptop with a Max-Q mobile GPU, at 2560×1664 with shaders, a reasonable
+target is **60fps @ shaders on Medium**; if you want High/Ultra you'll have to drop to 1080p.
 
-## 三、Minecraft + Sodium 的界面有个坑
+## 3. A trap in the Minecraft + Sodium UI
 
-**Sodium 的设置界面有 `Undo` / `Apply` 按钮。**
-只点「完成」而不点「Apply」，改动会**丢掉**。
+**Sodium's settings screen has `Undo` / `Apply` buttons.** Click only "Done" without clicking
+"Apply" and your changes are **thrown away**.
 
-怎么判断有没有提交：没提交的项旁边会显示一个 `*` 星号。
-
-```
-渲染距离 * 12个区块      ← 没提交
-渲染距离   12个区块      ← 已提交
-```
-
-对应到 `options.txt` 就是 `renderDistance:12` 有没有写进去。
-
-## 四、F3 调试界面本身很吃性能
-
-开着完整的 F3 调试屏（尤其装了一堆显示方块信息的 mod 之后，
-右边会刷出几百行标签），帧率会明显偏低。
-
-**测帧率时先关掉 F3**，或者知道这个偏差的存在。
-
-顺便，F3 里最该看的两行：
+How to tell whether something was committed: uncommitted entries show a `*` next to them.
 
 ```
-60 fps / 120 fps 垂直同步        ← 当前/上限
-p50=60 p98=30 p99.5=30 fps      ← 帧时间分布，比瞬时值有参考价值
+Render Distance * 12 chunks   <- not committed
+Render Distance   12 chunks   <- committed
 ```
 
-`p50=60` 说明一半以上的帧是满帧的，只有 2% 掉到 30 —— 这比"平均 45fps 但一直在抖"
-体验好得多。
+In `options.txt`, that comes down to whether `renderDistance:12` was actually written.
 
-## 五、垂直同步的处理
+## 4. The F3 debug screen is expensive by itself
 
-| 设置 | 效果 |
+With the full F3 debug screen open (especially once you've installed a pile of mods that add block
+information, filling hundreds of lines down the right-hand side), the frame rate reads noticeably
+lower.
+
+**Turn F3 off before measuring frame rate**, or at least know that the bias is there.
+
+While you're in there, the two lines that matter most:
+
+```
+60 fps / 120 fps (vsync)     <- current / cap
+p50=60 p98=30 p99.5=30 fps   <- frame-time distribution, more useful than the instant value
+```
+
+`p50=60` means more than half your frames are full frames and only 2% dip to 30 — a far better
+experience than "45fps average but constantly swinging".
+
+## 5. Handling vsync
+
+| Setting | Effect |
 |---|---|
-| **垂直同步开** | 60Hz 屏上会在 60 / 30 之间**跳档**（差一点点到 60 就直接锁 30） |
-| **垂直同步关 + 帧率上限 60** | 帧率在 40~60 之间平滑浮动，观感通常更好 |
+| **Vsync on** | On a 60Hz display it **snaps between 60 and 30** (come up just short of 60 and you're locked to 30) |
+| **Vsync off + frame rate cap 60** | The frame rate floats smoothly between 40 and 60, which usually looks better |
 
-对串流来说，客户端（Moonlight `--vsync`）已经负责显示同步了，
-游戏内垂直同步建议**关掉**，然后把最大帧率设成 60（别设 120，白烧显卡）。
+For streaming, the client (Moonlight `--vsync`) already handles display synchronization, so leave
+in-game vsync **off** and set the maximum frame rate to 60 (not 120 — that just burns GPU for
+nothing).
 
-## 六、光影怎么选
+## 6. Choosing a shader pack
 
-同一台机器、同一分辨率下的实测（2560×1664，60fps 为目标）：
+Measured on the same machine, at the same resolution (2560×1664, targeting 60fps):
 
-| 光影 | GPU 占用 | 特点 |
+| Shader pack | GPU usage | Notes |
 |---|---|---|
-| **Complementary Reimagined**（Medium 预设） | ~58% | 画面最好，阴影/反射/体积光全都有 |
-| **Solas** | ~80% | 现代风格，偏亮，比较吃性能 |
-| **MakeUp - Ultra Fast** | ~40% | 最省，画面朴素，适合低端卡或追求余量 |
+| **Complementary Reimagined** (Medium preset) | ~58% | Best-looking; shadows, reflections and volumetric light all present |
+| **Solas** | ~80% | Modern look, on the bright side, fairly demanding |
+| **MakeUp - Ultra Fast** | ~40% | Cheapest, plain visuals — good for weaker GPUs or if you want headroom |
 
-**降预设比换光影更划算**：Complementary 从 High 降到 Medium，
-帧率收益明显，而大多数人看不出区别。
+**Dropping a preset beats switching shader packs**: taking Complementary from High down to Medium
+gains an obvious amount of frame rate, and most people can't see the difference.
 
-改预设：游戏里「选项 → 视频设置 → 光影包 → 光影包设置 → 配置文件」，
-它会循环切换（Potato / Very Low / Low / Medium / High / Very High / Ultra）。
-设置会存到 `shaderpacks/<光影包名>.txt`，重启保留。
+To change presets: in game, Options → Video Settings → Shader Packs → Shader Pack Settings →
+Profile. It cycles through them (Potato / Very Low / Low / Medium / High / Very High / Ultra). The
+setting is saved to `shaderpacks/<shader-pack-name>.txt` and survives a restart.
 
-## 七、一条排查捷径
+## 7. A diagnostic shortcut
 
-帧率不对劲时，按这个顺序问自己：
+When the frame rate looks wrong, ask yourself in this order:
 
-1. **GPU 满了吗？**（`nvidia-smi -l 1`）满了 → 砍画质（第二节）
-2. **GPU 没满但帧率固定？** → 全屏/垂直同步问题（第一、五节）
-3. **把串流停了帧率变吗？** 不变 → 跟串流无关，继续查 1、2
-4. **帧率随分辨率线性变化吗？** 是 → 像素带宽瓶颈（看 [performance.md](performance.md)）
+1. **Is the GPU maxed out?** (`nvidia-smi -l 1`) If yes → cut image quality (section 2)
+2. **GPU not maxed but the frame rate is pinned?** → fullscreen/vsync problem (sections 1 and 5)
+3. **Does the frame rate change if you stop streaming?** No → it has nothing to do with streaming, keep working through 1 and 2
+4. **Does the frame rate scale linearly with resolution?** Yes → pixel bandwidth bottleneck (see [performance.md](performance.md))

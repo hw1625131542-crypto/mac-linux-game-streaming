@@ -1,4 +1,17 @@
 #!/usr/bin/env python3
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Generates a 128-byte EDID for a headless output. Two independent reasons:
+#
+#   1) Without an EDID the X server's framebuffer cannot be read back — Xorg
+#      starts fine and xrandr looks correct, but every screenshot, xwd, ffmpeg
+#      x11grab and Sunshine capture comes out pure black.
+#   2) DPI is derived from the EDID's physical size. Get it wrong and CEF-based
+#      apps (game launchers, mostly) scale their UI 2x with off-screen buttons.
+#
+#  Timings come from the system `cvt` tool unless --modeline is given.
+#  Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # -*- coding: utf-8 -*-
 """
 生成一个自定义 EDID 文件（128 字节基础块），给无头 NVIDIA 输出用。

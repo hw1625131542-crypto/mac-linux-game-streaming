@@ -1,68 +1,73 @@
-# Headless Xorg：让 X 服务器直接跑在显卡上
+# Headless Xorg: running the X server directly on the GPU
 
-对应脚本：`scripts/20-setup-headless-xorg.sh` + `scripts/make-edid.py`
+> 🌐 [中文](zh-CN/headless-xorg.md) ｜ **English**
 
-## 整体思路
 
-要让游戏在「没有物理显示器」的机器上跑，需要骗过三样东西：
+Scripts: `scripts/20-setup-headless-xorg.sh` + `scripts/make-edid.py`
 
-1. **显卡驱动**：让它以为某个输出接口上接了显示器 → `ConnectedMonitor`
-2. **X 服务器**：让它为这个假显示器建立可用的帧缓冲 → **必须有 EDID**
-3. **应用程序**：让它们看到一个合理的分辨率与 DPI → EDID 里的时序 + 物理尺寸
+## The big picture
 
-第 2 条是最容易踩的坑，见下。
+To run games on a machine with **no physical monitor**, you have to fool three things:
 
-## 坑一：没有 EDID，帧缓冲读不回来
+1. **The GPU driver** — make it believe a monitor is plugged into one of its outputs → `ConnectedMonitor`
+2. **The X server** — give it a usable framebuffer for that fake monitor → **an EDID is mandatory**
+3. **Applications** — show them a sane resolution and DPI → the timing + physical size in the EDID
 
-如果你只写了 `AllowEmptyInitialConfiguration` + `ConnectedMonitor`，
-Xorg 能正常启动，`xrandr` 也显示 2560×1664，`glxinfo` 也认得出显卡 ——
-**但是所有抓屏都是纯黑**：
+Item 2 is the one that bites hardest; details below.
+
+## Trap 1: with no EDID, the framebuffer can't be read back
+
+If all you set is `AllowEmptyInitialConfiguration` + `ConnectedMonitor`, Xorg starts fine, `xrandr`
+reports 2560×1664, and `glxinfo` recognizes the GPU — **but every screen capture comes out pure
+black**:
 
 ```bash
-DISPLAY=:200 xsetroot -solid red          # 把根窗口刷成纯红
+DISPLAY=:200 xsetroot -solid red          # paint the root window solid red
 DISPLAY=:200 import -window root /tmp/a.png
 convert /tmp/a.png -format '%[pixel:p{100,100}]' info:
-#   → gray(0)     ← 黑。xwd、ffmpeg -f x11grab 也一样
+#   → gray(0)     ← black. xwd and ffmpeg -f x11grab do the same thing
 ```
 
-Sunshine 抓到的也是黑的，于是串流出去就是**全黑画面**。
+What Sunshine captures is black too, so the stream you send out is a **black screen**.
 
-原因：没有 EDID 的「幽灵输出」在 NVIDIA 驱动里没有真正的扫描输出路径，
-驱动不保证能把前缓冲读回来。
+The reason: a "ghost output" with no EDID has no real scanout path in the NVIDIA driver, and the
+driver makes no promise that the front buffer can be read back.
 
-**解法**：给一个真的 EDID 文件（`make-edid.py` 就是生成它的）。
+**The fix**: hand it a real EDID file (`make-edid.py` is what generates one).
 
 ```apache
 Option "CustomEDID" "DFP-0:/home/you/game-stream-edid.bin"
 ```
 
-加上之后同一条命令立刻能抓到 `srgb(255,0,0)`。
+Add that and the exact same command immediately captures `srgb(255,0,0)`.
 
-> 顺带一提：EDID 可以用现成的（比如从别的显示器 dump 出来的 128 字节），
-> 但那样分辨率就被那份 EDID 限死了。自己生成才能拿到想要的分辨率。
+> By the way: you *can* use an off-the-shelf EDID (say the 128 bytes dumped from some other
+> monitor), but then your resolution is pinned to whatever that EDID describes. Generating your own
+> is the only way to get the resolution you actually want.
 
-## 坑二：DPI 是由 EDID 的物理尺寸决定的
+## Trap 2: DPI is determined by the EDID's physical size
 
-EDID 里除了时序，还有显示器的**物理尺寸（毫米）**。X 服务器用它来算 DPI：
+Besides the timing, an EDID also carries the monitor's **physical size in millimeters**. The X server
+uses it to compute DPI:
 
 ```
-DPI = 分辨率 / (物理尺寸 / 25.4)
+DPI = resolution / (physical size / 25.4)
 ```
 
-如果尺寸填得不对（比如从笔记本内屏 EDID 抄来的 344×194mm），
-在 2560×1664 下会算出 **191 DPI** —— 于是 Chromium/CEF 一类的程序
-（**游戏启动器基本都是 CEF**）会把 UI 放大两倍，按钮跑到屏幕外面去，
-你连「开始游戏」都点不到。
+Fill in the wrong size (say 344×194mm copied from a laptop panel's EDID) and at 2560×1664 you get
+**191 DPI** — so programs like Chromium/CEF (**and nearly every game launcher is CEF**) scale their
+UI 2×, the buttons land off-screen, and you can't even click "Start Game".
 
-`make-edid.py` 反过来算：给定目标 DPI（默认 96），自动推出物理尺寸。
+`make-edid.py` works backwards: give it a target DPI (96 by default) and it derives the physical
+size.
 
 ```bash
 python3 scripts/make-edid.py --from-config scripts/config.env
-#   时序      : 2560x1664 @ 59.97 Hz（像素时钟 362.25 MHz）
-#   物理尺寸  : 680x440 mm  →  DPI 96x96
+#   timing       : 2560x1664 @ 59.97 Hz (pixel clock 362.25 MHz)
+#   physical size: 680x440 mm  →  DPI 96x96
 ```
 
-验证：
+Verify:
 
 ```bash
 DISPLAY=:200 xdpyinfo | grep -E "dimensions|resolution"
@@ -70,12 +75,11 @@ DISPLAY=:200 xdpyinfo | grep -E "dimensions|resolution"
 #   resolution:    96x96 dots per inch
 ```
 
-## 坑三：nvidia_drv.so 不在默认模块路径
+## Trap 3: nvidia_drv.so isn't on the default module path
 
-Ubuntu 的 NVIDIA 包把它装在
-`/usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so`，
-不在 Xorg 默认搜索的 `/usr/lib/xorg/modules/drivers/` 下。
-所以配置里要显式加 ModulePath：
+Ubuntu's NVIDIA package installs it at
+`/usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so`, which is not under Xorg's default search path
+of `/usr/lib/xorg/modules/drivers/`. So the config has to add the ModulePath explicitly:
 
 ```apache
 Section "Files"
@@ -84,20 +88,21 @@ Section "Files"
 EndSection
 ```
 
-不然会看到 `Failed to load module "nvidia"`。
+Otherwise you get `Failed to load module "nvidia"`.
 
-## 输出连接器（ConnectedMonitor / CustomEDID 的名字）
+## Output connectors (the names used by ConnectedMonitor / CustomEDID)
 
-无头机器上你需要编一个名字。查你显卡有哪些接口：
+On a headless box you have to invent a name. Find out which connectors your GPU has:
 
 ```bash
-ls /sys/class/drm/         # 例如 card1-HDMI-A-1、card1-DP-1、card1-eDP-1
+ls /sys/class/drm/         # e.g. card1-HDMI-A-1, card1-DP-1, card1-eDP-1
 ```
 
-NVIDIA 驱动内部叫法通常是 `DFP-0`、`DFP-1`（数字接口）、`HDMI-0`、`DP-0`…
-**笔记本独显一般没有直连输出，`DFP-0` 通常就能骗过去**（这也是默认值）。
+The NVIDIA driver usually calls them `DFP-0`, `DFP-1` (digital outputs), `HDMI-0`, `DP-0`, and so
+on. **A laptop's discrete GPU normally has no directly wired output, and `DFP-0` is usually enough
+to fool it** (that's the default value too).
 
-自定义时序能不能用，还取决于：
+Whether custom timings are accepted also depends on:
 
 ```apache
 Option "ModeValidation" "AllowNonEdidModes, NoEdidModes, NoMaxPClkCheck, \
@@ -105,44 +110,46 @@ Option "ModeValidation" "AllowNonEdidModes, NoEdidModes, NoMaxPClkCheck, \
        NoVirtualSizeCheck, AllowInterlacedModes"
 ```
 
-没有这一串，驱动会以「EDID 里没有这个模式」为由拒绝你的分辨率。
+Without that list, the driver rejects your resolution on the grounds that "the EDID has no such
+mode".
 
-## 关于 `-ac`（关闭访问控制）
+## About `-ac` (disabling access control)
 
-服务用 `Xorg ... -ac` 启动：`-ac` 关掉 X 的访问控制，同机普通用户
-（Sunshine、xdotool、你的游戏）才能连上这个 display。
+The service starts Xorg with `-ac`: that turns off X's access control so ordinary users on the same
+machine (Sunshine, xdotool, your game) can connect to this display.
 
-单用户自用机器没问题；如果是多人共用的机器，改成生成一个 Xauthority
-并把 cookie 分发给需要用的人。
+Fine on a single-user box. On a shared machine, generate an Xauthority file and distribute the
+cookie to whoever needs it.
 
-## 为什么用 systemd 服务而不是 nohup
+## Why a systemd service instead of nohup
 
 ```bash
 systemctl status gamestream-xorg
-sudo systemctl restart gamestream-xorg        # 已配免密
+sudo systemctl restart gamestream-xorg        # passwordless sudo is already configured
 ```
 
-好处：
-- 崩了自动重启（`Restart=always`）
-- 开机自启
-- 日志统一在 `/var/log/gamestream-xorg.log`
-- 显示器编号放在 `~/gamestream-xorg.env`，改它不需要 root
+The benefits:
+- Automatic restart when it crashes (`Restart=always`)
+- Starts on boot
+- Logs in one place: `/var/log/gamestream-xorg.log`
+- The display number lives in `~/gamestream-xorg.env`, and changing it doesn't need root
 
-## 换分辨率 / 换机器怎么做
+## Changing resolution / moving to another machine
 
 ```bash
-# 1. 改 config.env 里的 STREAM_WIDTH / STREAM_HEIGHT / STREAM_DPI / XORG_OUTPUT
-# 2. 重新生成 EDID
+# 1. Edit STREAM_WIDTH / STREAM_HEIGHT / STREAM_DPI / XORG_OUTPUT in config.env
+# 2. Regenerate the EDID
 python3 scripts/make-edid.py --from-config scripts/config.env
-# 3. 重新生成 Xorg 配置并重启
+# 3. Regenerate the Xorg config and restart
 sudo bash scripts/20-setup-headless-xorg.sh
 ```
 
-建议 **串流分辨率 = Mac 屏幕的原生分辨率**，这样客户端不需要缩放，最清晰：
+One recommendation: **make the stream resolution match the Mac's native resolution**, so the client
+never has to scale and you get the sharpest image:
 
-| 机器 | 原生分辨率 |
+| Machine | Native resolution |
 |---|---|
 | MacBook Air 13" | 2560×1664 |
 | MacBook Pro 14" | 3024×1964 |
 | MacBook Pro 16" | 3456×2234 |
-| 外接 2K 显示器 | 2560×1440 |
+| External 2K monitor | 2560×1440 |

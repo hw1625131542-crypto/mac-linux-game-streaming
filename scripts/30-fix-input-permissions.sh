@@ -1,4 +1,15 @@
 #!/usr/bin/env bash
+# ---------------------------------------------------------------------------
+#  ENGLISH SUMMARY
+#  Fixes /dev/uinput and /dev/uhid permissions, and makes the fix persistent
+#  via a udev rule.
+#
+#  Why: Sunshine creates virtual mouse/keyboard/gamepad devices through the
+#  kernel's uinput/uhid. Those nodes are root-only by default (or rely on a
+#  logind ACL for the active session, which can vanish), and when that happens
+#  Sunshine logs `virtualhid-not-available` and mouse/keyboard do nothing in
+#  the stream. Comments below are in Chinese / 下面的注释是中文。
+# ---------------------------------------------------------------------------
 # ============================================================================
 #  ③ 修 /dev/uinput 权限（串流里鼠标键盘没反应的元凶）
 #
