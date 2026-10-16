@@ -154,6 +154,25 @@ sudo bash scripts/mac/install-awdl-guard.sh
 
 ---
 
+## 致谢
+
+**方向把控、实测、以及本文档里的每一个数字：仓库作者** —— 这些数据来自一台真实机器，
+不是估算的。15 fps、65 MPix/s、63.7ms → 7.6ms、40~58% GPU 占用，都是在同一台机器上量出来的。
+
+**文档撰写、脚本编写、以及大部分排障：[DeepSeek Harness](https://github.com/deepseek-ai) 运行
+`deepseek-flash` 模型** —— 一个 AI 编程 agent。它写了文档、参数化脚本和 EDID 生成器，
+并逐个定位了 [docs/zh-CN/](docs/zh-CN/) 里的那些坑。
+
+关于「AI 写的文档」这件事，值得明说：**这里没有任何内容是抄别人的博客。**
+每一个坑都是在一台真机上踩到、诊断、修好，然后才写下来的 ——
+那些数字来自 `glxgears`、`nvidia-smi`、`ping` 和 Sunshine/Moonlight 的日志。
+凡是还不确定的测量，文档里都标了「不确定」。
+
+欢迎指正 —— 尤其是某个坑在你的硬件上表现不一样的时候。
+
+---
+
 ## License
+
 
 MIT — 随便用，出问题欢迎开 issue。

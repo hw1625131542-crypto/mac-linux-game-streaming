@@ -158,6 +158,26 @@ display server, not the GPU.
 
 ---
 
+## Credits
+
+**Direction, testing and every measurement: the repository owner** — the hardware these numbers
+come from is a real machine, and every figure in these docs (15 fps, 65 MPix/s, 63.7 ms → 7.6 ms,
+40–58% GPU) was measured on it, not estimated.
+
+**Writing, scripts and most of the debugging: [DeepSeek Harness](https://github.com/deepseek-ai)
+running the `deepseek-flash` model** — an AI coding agent. It wrote the docs, the parameterised
+scripts and the EDID generator, and diagnosed the traps in [docs/](docs/) one by one.
+
+Worth saying plainly, since AI-written documentation is easy to distrust: **nothing here was
+researched from other people's blog posts.** Each trap was hit, diagnosed, fixed and then written
+up in a single long session — the numbers are readings from `glxgears`, `nvidia-smi`, `ping` and
+the Sunshine/Moonlight logs. If a measurement is uncertain, the doc says so.
+
+Corrections are welcome — especially if one of these traps behaves differently on your hardware.
+
+---
+
 ## License
+
 
 MIT — use it however you like; issues and PRs welcome.
