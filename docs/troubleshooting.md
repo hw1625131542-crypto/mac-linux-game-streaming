@@ -113,3 +113,17 @@ Three things are worth checking in that output:
 - **`srgb(255,0,0)`** — the framebuffer is readable, which means the EDID is doing its job
 - **`5` virtual input devices in the kernel and `4` claimed by Xorg** — the mismatch is normal
   (one of them, the touchscreen, is not something Xorg picks up as a slave device)
+
+---
+
+## After an update, or on a machine that also runs a desktop
+
+| Symptom | What it actually is | Fix |
+|---|---|---|
+| **Boot hangs at the splash**; SSH works but the screen never changes | `plymouth-quit-wait` stuck → blocks `multi-user.target`. `systemctl list-jobs` shows it | Remove `splash` from the kernel cmdline — [maintenance.md](maintenance.md) |
+| `nvidia-smi`: **"Failed to initialize NVML: Driver/library version mismatch"** | A driver upgrade replaced the userspace libraries, not the loaded kernel module | Reboot. Then pin the driver so it can't happen again — [maintenance.md](maintenance.md) |
+| **Login screen never appears**; blank console with a cursor | The desktop's X server died and nothing took over the framebuffer | Check `systemctl is-active graphical.target` and `ls /tmp/.X11-unix/` — [hybrid-gpu.md](hybrid-gpu.md) |
+| Headless Xorg: **"Failed to acquire modesetting permission"** / **"no screens found"** | The desktop session already owns the GPU's DRM master; one card can't serve both | Switch modes, don't fight it — [hybrid-gpu.md](hybrid-gpu.md) |
+| **Streaming is down after a reboot, though Sunshine is "installed"** | Its unit is `WantedBy=graphical-session.target`; with no greeter it's never pulled in | `WantedBy=default.target` — [hybrid-gpu.md](hybrid-gpu.md) |
+| Launcher asks you to **sign in again**; account shows "content not ready" | Credential files were truncated, usually by `kill -9` or a hard power-off | Sign in once; close it with `xdotool windowclose`/SIGTERM from then on — [maintenance.md](maintenance.md) |
+| The stream **shows black** even though the client connected | The virtual display has no windows — the game/launcher never started (often: the launcher is stuck on a sign-in dialog) | Screenshot the display with `DISPLAY=:200 import -window root /tmp/s.png` and look at it |

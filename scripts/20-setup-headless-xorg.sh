@@ -132,7 +132,7 @@ EnvironmentFile=-$ENV_FILE
 # -ac            关掉访问控制（同机的普通用户/Sunshine 要能连上）
 # -noreset       客户端全退出后不重置
 # -nolisten tcp  只允许本地连接
-ExecStart=/usr/lib/xorg/Xorg \${GS_DISPLAY} -config $XORG_CONF_PATH -logfile $XORG_LOG -noreset -nolisten tcp -ac
+ExecStart=/usr/lib/xorg/Xorg \${GS_DISPLAY} -config $XORG_CONF_PATH -logfile $XORG_LOG -noreset -nolisten tcp -ac -novtswitch
 Restart=always
 RestartSec=3
 

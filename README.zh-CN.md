@@ -21,6 +21,8 @@
 | 鼠标一点进窗口就**消失、移不出来** | Moonlight 默认「相对鼠标 + 指针捕获」，远程桌面要用绝对鼠标 | [macos-client.md](docs/zh-CN/macos-client.md) |
 | 每隔几秒**轻微卡一下**，丢包率却不高 | macOS 的 **AWDL**（AirDrop 用的直连无线电）周期性抢占 Wi-Fi | [network.md](docs/zh-CN/network.md) |
 | 帧率**死锁在正好 30fps**，GPU 却只用了 47% | 游戏的**独占全屏**模式在无头显示上锁 30 | [game-tuning.md](docs/zh-CN/game-tuning.md) |
+| **桌面和串流不能同时跑**（只有一张显卡） | Linux 的 DRM 一张卡只允许一个 master，桌面的 X 服务器和无头 Xorg 要抢它 | [hybrid-gpu.md](docs/zh-CN/hybrid-gpu.md) |
+| 屏幕永远停在开机画面，或升级后只剩个空终端 | Plymouth 的 quit-wait 卡死；驱动升级换掉了用户态库但内核模块还挂着旧的 | [maintenance.md](docs/zh-CN/maintenance.md) |
 
 ---
 
@@ -130,6 +132,8 @@ sudo bash scripts/mac/install-awdl-guard.sh
 │   ├── 30-fix-input-permissions.sh
 │   ├── 40-configure-sunshine.sh
 │   ├── 50-session-up.sh
+│   ├── 60-mode-switch.sh          # 桌面 ↔ 串流互斥切换（单显卡）
+│   ├── 61-auto-return.sh          # 可选：断开后自动回桌面
 │   └── mac/
 │       ├── start-stream.command   # Mac 端一键串流
 │       ├── awdl-guard.sh          # AWDL 智能开关（串流时关）

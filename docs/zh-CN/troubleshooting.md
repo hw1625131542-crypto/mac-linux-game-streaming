@@ -106,3 +106,17 @@ echo "== GPU =="; nvidia-smi --query-gpu=utilization.gpu,memory.used,power.draw 
 == 窗口管理器 ==   ✓
 == Sunshine ==     ✓
 ```
+
+---
+
+## 升级之后，或者这台机器同时还要跑桌面
+
+| 现象 | 实际原因 | 处理 |
+|---|---|---|
+| **启动卡在开屏画面**；SSH 能连但屏幕永远不变 | `plymouth-quit-wait` 卡住 → 阻塞 `multi-user.target`。`systemctl list-jobs` 能看到它 | 从内核参数里去掉 `splash` —— [maintenance.md](zh-CN/maintenance.md) |
+| `nvidia-smi` 报 **"Failed to initialize NVML: Driver/library version mismatch"** | 驱动升级换掉了用户态库，但内核里跑的还是旧模块 | 重启。然后把驱动锁住，避免再次发生 —— [maintenance.md](zh-CN/maintenance.md) |
+| **登录界面完全不出现**，只有一个空终端加光标 | 桌面的 X 服务器挂了，没有任何东西接管帧缓冲 | 查 `systemctl is-active graphical.target` 和 `ls /tmp/.X11-unix/` —— [hybrid-gpu.md](zh-CN/hybrid-gpu.md) |
+| 无头 Xorg 报 **"Failed to acquire modesetting permission"** / **"no screens found"** | 桌面会话已经拿走了显卡的 DRM master，一张卡喂不了两边 | 切换模式，别硬抢 —— [hybrid-gpu.md](zh-CN/hybrid-gpu.md) |
+| **重启后串流没了**，但 Sunshine 明明"装好了" | 它的服务写的是 `WantedBy=graphical-session.target`，没有登录界面就永远不会被拉起来 | 改成 `WantedBy=default.target` —— [hybrid-gpu.md](zh-CN/hybrid-gpu.md) |
+| 启动器要求**重新登录**，账号显示 "content not ready" | 凭据文件被截断了，多半是 `kill -9` 或硬断电造成 | 重新登录一次；以后用 `xdotool windowclose`/SIGTERM 关闭 —— [maintenance.md](zh-CN/maintenance.md) |
+| 串流**全黑**，但客户端明明连上了 | 虚拟屏上没有任何窗口 —— 游戏/启动器没起来（常见：启动器卡在登录框） | 用 `DISPLAY=:200 import -window root /tmp/s.png` 截个图看看 |

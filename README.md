@@ -22,6 +22,8 @@ presents misleading symptoms:
 | The cursor **vanishes and gets stuck** the moment you click into the window | Moonlight defaults to relative mouse + pointer capture; desktop streaming needs absolute | [macos-client.md](docs/macos-client.md) |
 | **Brief stutters every few seconds**, yet packet loss looks low | macOS **AWDL** (the AirDrop radio) periodically hijacks the Wi-Fi radio | [network.md](docs/network.md) |
 | The game is **hard-locked to exactly 30fps** while the GPU sits at 47% | Exclusive fullscreen on a headless display | [game-tuning.md](docs/game-tuning.md) |
+| **The desktop and the stream won't run at the same time** (one GPU) | Linux DRM allows one master per card — the desktop's X server and the headless Xorg fight over it | [hybrid-gpu.md](docs/hybrid-gpu.md) |
+| The screen sits on the boot splash forever, or a blank console after an update | Plymouth's quit-wait hangs; a driver upgrade replaces libs under a running kernel module | [maintenance.md](docs/maintenance.md) |
 
 ---
 
@@ -133,6 +135,8 @@ It installs a daemon that disables AWDL while Moonlight is streaming and restore
 │   ├── 30-fix-input-permissions.sh
 │   ├── 40-configure-sunshine.sh
 │   ├── 50-session-up.sh
+│   ├── 60-mode-switch.sh          # desktop ↔ streaming (single-GPU hybrid)
+│   ├── 61-auto-return.sh          # optional: return to desktop on disconnect
 │   └── mac/
 │       ├── start-stream.command   # one-click launch from the Mac
 │       ├── awdl-guard.sh          # toggles AWDL off only while streaming
