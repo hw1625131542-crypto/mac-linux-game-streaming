@@ -1,4 +1,4 @@
-# 维护：别让升级把整台机器搞挂
+# Maintenance: don't let updates take the box down
 
 > 🌐 [中文](zh-CN/maintenance.md) ｜ **English**
 
