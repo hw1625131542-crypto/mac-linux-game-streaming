@@ -40,6 +40,46 @@ checklist at the bottom of this page, then hold again.
 
 ---
 
+## 1b. Rolling back: the old package name lies to you
+
+After a major driver upgrade, the previous branch is **not** installable under its old name any
+more. Ubuntu turns the old metapackages into **aliases** for the new branch:
+
+```bash
+$ apt-cache depends nvidia-driver-610-open
+nvidia-driver-610-open
+  Depends: nvidia-driver-615-open
+```
+
+Neither of these downgrades anything:
+
+```bash
+apt install nvidia-driver-610-open                          # just installs 615 again
+apt install nvidia-driver-610-open=610.57.04-0ubuntu0.24.04.4   # same: the version resolves to the alias
+```
+
+The second one is the nasty one: Ubuntu replaced the package's **content** while keeping its
+**version number**, so pinning the version gets you the alias as well. You find out only if you
+read `apt-cache depends` — `apt` reports success either way.
+
+A real rollback means **switching branches**, not lowering a version:
+
+```bash
+$ ubuntu-drivers list
+  nvidia-driver-550-open
+  nvidia-driver-560-open
+  ...
+$ sudo apt install nvidia-driver-560-open
+```
+
+Or bypass apt entirely with NVIDIA's `.run` installer.
+
+> **The practical consequence:** pin the driver *before* a major upgrade happens. Afterwards there
+> is no "old version" left to go back to — only older *branches*, which are a different animal
+> (different features, different bugs, possibly no support for your GPU generation).
+
+---
+
 ## 2. Plymouth can hang the boot at the splash
 
 Symptom: the machine is powered on, the network is up (SSH works), but the screen sits on the

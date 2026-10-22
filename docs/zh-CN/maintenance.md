@@ -37,6 +37,44 @@ apt-mark showhold
 
 ---
 
+## 1b. 回滚：旧包名会骗你
+
+跨大版本升级之后，**原来的驱动分支已经装不回来了** —— 它会以旧名字存在，但不再是旧东西。
+Ubuntu 把旧元包改成了新分支的**别名**：
+
+```bash
+$ apt-cache depends nvidia-driver-610-open
+nvidia-driver-610-open
+  Depends: nvidia-driver-615-open
+```
+
+下面两条命令**都不会降级**：
+
+```bash
+apt install nvidia-driver-610-open                          # 只是把 615 再装一遍
+apt install nvidia-driver-610-open=610.57.04-0ubuntu0.24.04.4   # 一样：这个版本号解析到的还是别名
+```
+
+第二条最阴 —— Ubuntu 换掉了包的**内容**但保留了**版本号**，所以指定版本拿到的还是别名。
+只有去读 `apt-cache depends` 才能发现，而 `apt` 两种情况下都报成功。
+
+真正的回滚是**换分支**，不是降版本：
+
+```bash
+$ ubuntu-drivers list
+  nvidia-driver-550-open
+  nvidia-driver-560-open
+  ...
+$ sudo apt install nvidia-driver-560-open
+```
+
+或者用 NVIDIA 官方的 `.run` 安装包，完全绕开 apt 的打包。
+
+> **实际后果**：必须在**升级发生之前**锁住驱动。升级之后就没有"旧版本"可退了，只剩下
+> "旧分支" —— 那是另一回事（特性不同、bug 不同、可能根本不支持你这代显卡）。
+
+---
+
 ## 2. Plymouth 会把启动卡在开屏画面上
 
 症状：机器开着、网络通（SSH 能连）、但屏幕永远停在开机画面，而且
